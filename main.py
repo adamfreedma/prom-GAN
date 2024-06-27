@@ -19,12 +19,12 @@ def capture_images(path):
             pt_1 = (int(16 * SIZE / 64), int(38 * SIZE / 64))
             pt_2 = (int(48 * SIZE / 64), int(52 * SIZE / 64))
             # draw ellipse to put face in
-            cv2.ellipse(cpy, (SIZE // 2, int(SIZE // 2)), (int(SIZE // 3.5), int(SIZE // 2.667)), 0, 0, 360, (0, 255, 0), 2)
+            cv2.ellipse(cpy, (SIZE // 2, int(SIZE // 2)), (int(SIZE // 3.3), int(SIZE // 2.55)), 0, 0, 360, (0, 255, 0), 2)
 
             cv2.imshow("capture", cpy)
 
             if cv2.waitKey(1) & 0xFF == ord(" "):
-                cv2.imwrite(f"{path}/{path}/image{i}.png", frame)
+                cv2.imwrite(f"{path}/{path}/image-ariel{i}.png", frame)
                 break
 
     cv2.destroyAllWindows()

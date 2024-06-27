@@ -39,8 +39,8 @@ transform = transforms.Compose(
     ]
 )
 
-NUM_ITERATIONS = 500
-MODELS_PATH = "models\\128v2"
+NUM_ITERATIONS = 300
+MODELS_PATH = "models\\rms_slow"
 
 
 # pre-process the mask array so that uint64 types from opencv.imread can be adapted
@@ -151,6 +151,7 @@ def blend_all(target_img_path, source_img_path, mask_path, index=0):
     target = cv2.imread(target_img_path)
     source = cv2.imread(source_img_path)
     mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
+    cv2.dilate(mask, np.ones((5, 5), np.uint8), mask, iterations=1)
 
     print(np.max(target), np.min(target))
 
@@ -168,7 +169,7 @@ def create_mask(x_0, y_0, x_1, y_1, size=(SIZE, SIZE)):
 
 def get_ring(mask):
     ring = np.zeros_like(mask)
-    kernel = np.array([[1, 1, 1], [1, 1, 1], [1, 1, 1]])
+    kernel = np.array([[0.01, 1, 0.01], [0.01, 1, 0.01], [0.01, 1, 0.01]])
     for k in range(1, mask.shape[0] - 1):
         if k == SIZE // 2:
             k = SIZE // 2
@@ -208,6 +209,7 @@ def solve(images_path):
 
     generator = Generator()
     discriminator = Discriminator()
+    discriminator70 = Discriminator()
 
     generator.load_state_dict(
         torch.load(
@@ -219,16 +221,21 @@ def solve(images_path):
             os.path.join(MODELS_PATH, "discriminator"), map_location=torch.device("cpu")
         )
     )
+    discriminator.load_state_dict(
+        torch.load(
+            os.path.join(MODELS_PATH, "discriminator_70"), map_location=torch.device("cpu")
+        )
+    )
 
     # Define the loss function
     criterion = nn.L1Loss()
     bce_criterion = nn.BCELoss()
 
     org_mask = create_mask(
-        int(38 * SIZE / 64),
-        int(20 * SIZE / 64),
-        int(52 * SIZE / 64),
-        int(44 * SIZE / 64),
+        int(40 * SIZE / 64),
+        int(24 * SIZE / 64),
+        int(50 * SIZE / 64),
+        int(40 * SIZE / 64),
     )
     # Create a 64x64 tensor filled with False
     mask = np.array([get_ring(org_mask), get_ring(org_mask), get_ring(org_mask)])
@@ -256,12 +263,13 @@ def solve(images_path):
         noise.requires_grad = True  # Ensure gradients are tracked
 
         # Set up the optimizer for z
-        optimizer = torch.optim.Adam([noise], lr=0.1)
+        optimizer = torch.optim.RMSprop([noise])
+        # optimizer = torch.optim.Adam([noise], lr=0.1)
 
         # Define the number of iterations for optimization
 
         lambda_recon = 100.0
-        lambda_adv = 0.05 * 4
+        lambda_adv =  0.05 * 40
 
         generator.eval()
         discriminator.eval()
@@ -271,12 +279,15 @@ def solve(images_path):
             # Generate an image from the latent vector z
             generated_img = generator(noise)
             discriminator_output = discriminator(generated_img)
+            discriminator70_output = discriminator70(generated_img)
+            
             # Compute the loss between the generated image and the corrupted image
             recon_loss = criterion(generated_img * mask, masked_img)
 
             adv_loss = bce_criterion(
                 discriminator_output, torch.ones_like(discriminator_output)
             )
+
             # Total loss
             loss = lambda_recon * recon_loss + lambda_adv * adv_loss
             # Backpropagate the loss
@@ -286,7 +297,7 @@ def solve(images_path):
             optimizer.step()
 
             # Print the loss every 1000 iterations
-            if iteration == NUM_ITERATIONS - 1:
+            if iteration == NUM_ITERATIONS - 1 or iteration % 50 == 0:
                 # Apply the mask
                 save_image(
                     generated_img, f"working\\source.jpg", nrow=5, normalize=True
@@ -299,6 +310,7 @@ def solve(images_path):
                 )
                 save_image(org_mask_cuda, f"working\\mask.jpg", nrow=5, normalize=True)
                 print("d_output", discriminator_output)
+                print("d_old_output", discriminator70_output)
                 target_path = f"working\\bg.jpg"
                 source_path = f"working\\source.jpg"
                 mask_path = f"working\\mask.jpg"
